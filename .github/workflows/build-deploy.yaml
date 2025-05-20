@@ -1,0 +1,49 @@
+name: CI/CD - Go Lambda Deploy
+
+on:
+  push:
+    branches:
+      - feature/scrore_api
+
+jobs:
+  build-and-deploy:
+    name: Build Go App and Deploy with Terraform
+    runs-on: ubuntu-latest
+
+    env:
+      GOOS: linux
+      GOARCH: arm64
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.20'
+
+      - name: Build Go binary for AWS Lambda (arm64)
+        run: |
+          mkdir -p build
+          go build -o build/bootstrap main.go
+
+      - name: Package Lambda (ZIP)
+        run: zip -j build/lambda.zip build/bootstrap
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.5.7
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Validate
+        run: terraform validate
+
+      - name: Terraform Plan
+        run: terraform plan -var="lambda_zip_path=$(pwd)/build/lambda.zip"
+
+      - name: Terraform Apply
+        run: terraform apply -auto-approve -var="lambda_zip_path=$(pwd)/build/lambda.zip"
