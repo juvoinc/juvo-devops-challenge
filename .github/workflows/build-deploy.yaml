@@ -3,6 +3,7 @@ name: CI/CD - Go Lambda Deploy
 on:
   push:
     branches:
+      - master
       - feature/scrore_api
 
 jobs:
