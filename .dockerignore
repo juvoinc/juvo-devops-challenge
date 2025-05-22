@@ -1,0 +1,7 @@
+.gitignore
+.github
+.git
+.vscode
+Dockerfile
+terraform/*
+docker-compose.yml
