@@ -55,7 +55,7 @@ variable "task_memory" {
 variable "service_desired_count" {
   description = "Número desejado de instâncias da tarefa"
   type        = number
-  default     = 3
+  default     = 2
 }
 
 variable "auto_scaling_min_capacity" {
