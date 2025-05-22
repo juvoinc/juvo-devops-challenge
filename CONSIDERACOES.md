@@ -7,6 +7,28 @@ A arquitetura proposta para a API de Score de Crédito foi desenhada com foco em
 
 Utilizado o [Diagrams as Code](https://diagrams.mingrammer.com/docs/getting-started/examples) para criar o diagrama da arquitetura, que pode ser editado e versionado no repositório.
 
+## Executando ambiente local
+
+```bash
+docker-compose up --build
+```
+A API pode ser acessada em `http://localhost:8080/score` e o Health Check em `http://localhost:8080/health`.
+
+```bash	
+URL_API="http://localhost:8080/score"
+curl -X POST $URL_API -H "Content-Type: application/json" -d '{"cpf":"12345678901"}'
+```
+
+![Resultado teste local](./imgs/exec_local.png)
+
+**Health Check**: A API possui um endpoint de health check que retorna o status da aplicação. O retorno esperado é `{"status":"healthy"}`.
+
+```bash
+curl localhost:8080/health
+```
+
+![Resultado Health Check local](./imgs/health_check_local.png)
+
 
 ## 1. Escolha da Linguagem: Go
 

@@ -4,6 +4,11 @@ on:
   push:
     branches:
       - master
+    paths-ignore:
+      - 'imgs/**'
+      - 'stress_test/**'
+      - 'README.md'
+      - 'CONSIDERACOES.md'
   workflow_dispatch:
 
 env:
