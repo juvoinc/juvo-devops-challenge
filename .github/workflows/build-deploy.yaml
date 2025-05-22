@@ -1,0 +1,131 @@
+name: Build e Deploy para AWS ECS
+
+on:
+  push:
+    branches:
+      - master
+    paths-ignore:
+      - 'imgs/**'
+      - 'stress_test/**'
+      - 'README.md'
+      - 'CONSIDERACOES.md'
+  workflow_dispatch:
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPOSITORY: score-api
+  ECS_CLUSTER: score-api-cluster
+  ECS_SERVICE: score-api-service
+  CONTAINER_NAME: score-api-container
+  TF_WORKING_DIR: ./terraform
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  terraform-apply:
+    name: Terraform Apply
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout do código
+      uses: actions/checkout@v3
+
+    - name: Configurar AWS CLI
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v2
+      with:
+        terraform_version: 1.12.0
+
+    - name: Terraform Init
+      working-directory: ${{ env.TF_WORKING_DIR }}
+      run: terraform init
+
+    - name: Terraform Validate
+      working-directory: ${{ env.TF_WORKING_DIR }}
+      run: terraform validate
+
+    - name: Terraform Plan
+      working-directory: ${{ env.TF_WORKING_DIR }}
+      run: terraform plan -var="ecr_repository_url=${{ env.ECR_REPOSITORY }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}"
+
+    - name: Terraform Apply
+      working-directory: ${{ env.TF_WORKING_DIR }}
+      run: terraform apply -auto-approve -var="ecr_repository_url=${{ env.ECR_REPOSITORY }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}"
+
+    - name: Capturar outputs do Terraform
+      id: terraform-outputs
+      working-directory: ${{ env.TF_WORKING_DIR }}
+      run: |
+        echo "::set-output name=ecr_repository_url::$(terraform output -raw ecr_repository_url)"
+        echo "::set-output name=ecs_cluster_name::$(terraform output -raw ecs_cluster_name)"
+        echo "::set-output name=ecs_service_name::$(terraform output -raw ecs_service_name)"
+
+  build-and-deploy:
+    name: Build e Deploy
+    runs-on: ubuntu-latest
+    needs: terraform-apply
+    
+    steps:
+    - name: Checkout do código
+      uses: actions/checkout@v4
+
+    - name: Configurar AWS CLI
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Login no Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v1
+
+    - name: Build, tag e push da imagem para o Amazon ECR
+      id: build-image
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        IMAGE_TAG: ${{ github.sha }}
+      run: |
+        # Build da imagem Docker
+        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG -t $ECR_REGISTRY/$ECR_REPOSITORY:latest -f Dockerfile .
+        
+        # Push da imagem para o ECR
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+        
+        # Salvar referência da imagem para uso posterior
+        echo "::set-output name=image::$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+
+    - name: Baixar definição de tarefa atual do ECS
+      run: |
+        aws ecs describe-task-definition --task-definition score-api-task \
+        --query taskDefinition > task-definition.json
+
+    - name: Preencher nova definição de tarefa
+      id: task-def
+      uses: aws-actions/amazon-ecs-render-task-definition@v1
+      with:
+        task-definition: task-definition.json
+        container-name: ${{ env.CONTAINER_NAME }}
+        image: ${{ steps.build-image.outputs.image }}
+
+    - name: Deploy para Amazon ECS
+      uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+      with:
+        task-definition: ${{ steps.task-def.outputs.task-definition }}
+        service: ${{ env.ECS_SERVICE }}
+        cluster: ${{ env.ECS_CLUSTER }}
+        wait-for-service-stability: true
+
+    - name: Verificar status do deploy
+      run: |
+        echo "Deploy concluído com sucesso para ${{ steps.build-image.outputs.image }}"
+        echo "Serviço disponível em https://api.k8s.turatti.xyz"
