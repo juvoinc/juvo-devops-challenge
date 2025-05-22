@@ -49,7 +49,7 @@ variable "task_cpu" {
 variable "task_memory" {
   description = "Memória para a tarefa ECS em MB"
   type        = number
-  default     = 1024
+  default     = 2048
 }
 
 variable "service_desired_count" {
